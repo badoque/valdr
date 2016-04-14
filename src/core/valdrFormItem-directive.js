@@ -66,21 +66,48 @@ var valdrFormItemDirectiveDefinitionFactory = function (restrict) {
             console.warn('Form element with ID "' + attrs.id + '" is not bound to a field name.');
           }
 
-          var updateNgModelController = function (validationResult) {
+          var updateNgModelController = function (validationResult, isAsync) {
 
             if (valdrEnabled.isEnabled()) {
               var validatorTokens = ['valdr'];
 
               // set validity state for individual valdr validators
               angular.forEach(validationResult.validationResults, function (result) {
-                var validatorToken = valdrUtil.validatorNameToToken(result.validator);
-                ngModelController.$setValidity(validatorToken, result.valid);
-                validatorTokens.push(validatorToken);
+                var validatorToken;
+                if(!isAsync && (result.isAsync === false || result.isAsync === undefined) || 
+                  isAsync && (result.isAsync !== false || result.isAsync !== undefined)){
+                  if(result.isAsync === false || result.isAsync === undefined){
+                    validatorToken = valdrUtil.validatorNameToToken(result.validator);
+                    ngModelController.$setValidity(validatorToken, result.valid);
+                  } else {
+                    debugger;
+                    validatorToken = valdrUtil.validatorNameToToken(result.validator);
+                    result.valid.then(function(){
+                      ngModelController.$setValidity(validatorToken, true);
+                    }).catch(function(){
+                      ngModelController.$setValidity(validatorToken, false);
+                    });
+                    ngModelController.$setValidity(validatorToken, false);
+                    validatorTokens.push(validatorToken);
+                  }
+                }                
               });
 
               // set overall validity state of this form item
-              ngModelController.$setValidity('valdr', validationResult.valid);
-              ngModelController.valdrViolations = validationResult.violations;
+              if(!isAsync){
+                ngModelController.$setValidity('valdr', validationResult.valid);
+                ngModelController.valdrViolations = validationResult.violations;
+              } else {
+                validationResult.valid.then(function(){
+                  ngModelController.$setValidity('valdrAsync', true);
+                }).catch(function(){
+                  ngModelController.$setValidity('valdrAsync', false);
+                }).finally(function(){
+                  ngModelController.valdrViolations = validationResult.violations;
+                })
+                
+              }
+              
 
               // remove errors for valdr validators which no longer exist
               angular.forEach(ngModelController.$error, function (value, validatorToken) {
@@ -103,7 +130,7 @@ var valdrFormItemDirectiveDefinitionFactory = function (restrict) {
             return function(modelValue){
               var getOtherModelValuesOnForm = extractModelValuesFromFormController(FormController);
               var validationResult = valdr.validate(valdrTypeController.getType(), fieldName, modelValue, getOtherModelValuesOnForm, isAsync);
-              updateNgModelController(validationResult);
+              updateNgModelController(validationResult, isAsync);
               if(valdrEnabled.isEnabled()){
                 return validationResult.valid;
               } else if(isAsync){
@@ -120,7 +147,7 @@ var valdrFormItemDirectiveDefinitionFactory = function (restrict) {
           var asyncValidate = createValidator(true);
 
           ngModelController.$validators.valdr = validate;
-          ngModelController.$asyncValidators.valdr = asyncValidate;
+          ngModelController.$asyncValidators.valdrAsync = asyncValidate;
 
           scope.$on(valdrEvents.revalidate, function () {
             validate(ngModelController.$modelValue);
