@@ -121,7 +121,7 @@ angular.module('valdr')
              * @param value the value to validate
              * @returns {*}
              */
-            validate: function (typeName, fieldName, value, getOtherModelsDataOnForm, async) {
+            validate: function (typeName, fieldName, value, getOtherModelsDataOnForm, isAsync) {
               var validResult = { valid: true },
                 typeConstraints = constraintsForType(typeName);
 
@@ -136,12 +136,12 @@ angular.module('valdr')
                 var validatorsToRun = 0;
                 var validatorsRan = 0;
                 for (var k in fieldConstraints) {
-                  if (fieldConstraints.hasOwnProperty(k) && fieldConstraints[k].async){
+                  if (fieldConstraints.hasOwnProperty(k) && fieldConstraints[k].isAsync){
                     validatorsToRun++;
                   }
                 }
 
-                if(async){
+                if(isAsync){
                   deferred = $q.defer();
                 }
 
@@ -150,14 +150,21 @@ angular.module('valdr')
                   var validator = validators[validatorName];
                   var validationResult;
 
-                  if(validator !== undefined && validator.async){
+                  if(validator !== undefined && validator.isAsync){
                     hasAsyncValidators = true;
                   }
 
                   if (angular.isUndefined(validator)) {
                     $log.warn('No validator defined for \'' + validatorName +
                       '\'. Can not validate field \'' + fieldName + '\'');
-                    return validResult;
+                    if(!isAsync){
+                      return validResult;
+                    } else {
+                      deferred.resolve();
+                      return {
+                        valid: deferred.promise
+                      }
+                    }
                   }
 
                   var getRequiredModelsValues = function(constraint){
@@ -202,7 +209,7 @@ angular.module('valdr')
                     });
                   };
 
-                  if(!async && (validator.async === false || validator.async === undefined) || async && validator.async){
+                  if(!isAsync && (validator.isAsync === false || validator.isAsync === undefined) || isAsync && validator.isAsync){
 
                     var valid;
                     if(constraint.hasOwnProperty('requireModels')){
@@ -212,7 +219,7 @@ angular.module('valdr')
                     } 
                     validatorsRan++;
                     
-                    if(!async){
+                    if(!isAsync){
                       validationResult = {
                         valid: valid,
                         value: value,
@@ -242,7 +249,7 @@ angular.module('valdr')
                       valid.then(function(){
                         validationResult.valid = true;
                       }).catch(function(){
-                        validationResult.valid = true;
+                        validationResult.valid = false;
                         violations.push(validationResult);
                       }).finally(function(){
                         fieldIsValid = undefined;
@@ -267,12 +274,11 @@ angular.module('valdr')
                             deferred.resolve();
                           }
                         }
-                      });
+                      }); 
                     }
                   }
                 });
-                if(!async){
-                  debugger;
+                if(!isAsync){
                   return {
                     valid: fieldIsValid,
                     violations: violations.length === 0 ? undefined : violations,
@@ -296,7 +302,15 @@ angular.module('valdr')
 
                 }
               } else {
-                return validResult;
+                if(!isAsync){
+                  return validResult;
+                } else {
+                  var deferred = $q.defer();
+                  deferred.resolve();
+                  return {
+                    valid: deferred.promise
+                  }
+                }
               }
             },
             addConstraints: function (newConstraints) {

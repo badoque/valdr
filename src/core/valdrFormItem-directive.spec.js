@@ -52,7 +52,7 @@ describe('valdrFormItem directive', function () {
     compileTemplate(inputTemplate);
     ngModelController = element.find('input').controller('ngModel');
     FormController = element.find('section').controller('form');
-  }
+  } 
 
   // COMMON SETUP
 
@@ -64,12 +64,31 @@ describe('valdrFormItem directive', function () {
      */
     module(function ($provide) {
       $provide.value('valdr', {
-        validate: function (typeName, fieldName, value) {
-          return {
-            valid: value === 'valid',
-            violations: violations,
-            validationResults: validationResults
-          };
+        validate: function (typeName, fieldName, value, getOtherModelsDataOnForm, isAsync) {
+          if(isAsync){
+            var ret;
+            inject(function($q){
+              var deferred = $q.defer();
+              if(value === 'valid'){
+                deferred.resolve();
+              } else {
+                deferred.reject();
+              }
+              ret = {
+                valid: deferred.promise,
+                violations: violations,
+                validationResults: validationResults
+              }
+            });
+            return ret
+          } else {
+            var ret = {
+              valid: value === 'valid',
+              violations: violations,
+              validationResults: validationResults
+            }
+            return ret;
+          }
         }
       });
     });

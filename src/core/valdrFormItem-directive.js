@@ -36,7 +36,7 @@ function extractModelValuesFromFormController(FormController){
  * the attribute 'valdr-no-validate' can be added to those fields.
  */
 var valdrFormItemDirectiveDefinitionFactory = function (restrict) {
-    return ['valdrEvents', 'valdr', 'valdrUtil', function (valdrEvents, valdr, valdrUtil) {
+    return ['valdrEvents', 'valdr', 'valdrUtil', '$timeout', '$q', function (valdrEvents, valdr, valdrUtil, $timeout, $q) {
       return {
         restrict: restrict,
         require: ['?^valdrType', '?^ngModel', '?^valdrFormGroup', '?^valdrEnabled', '?^form'],
@@ -99,12 +99,20 @@ var valdrFormItemDirectiveDefinitionFactory = function (restrict) {
           };
 
 
-          var createValidator = function(async){
+          var createValidator = function(isAsync){
             return function(modelValue){
               var getOtherModelValuesOnForm = extractModelValuesFromFormController(FormController);
-              var validationResult = valdr.validate(valdrTypeController.getType(), fieldName, modelValue, getOtherModelValuesOnForm, async);
+              var validationResult = valdr.validate(valdrTypeController.getType(), fieldName, modelValue, getOtherModelValuesOnForm, isAsync);
               updateNgModelController(validationResult);
-              return valdrEnabled.isEnabled() ? validationResult.valid : true;
+              if(valdrEnabled.isEnabled()){
+                return validationResult.valid;
+              } else if(isAsync){
+                var deferred = $q.defer();
+                deferred.resolve();
+                return deferred.promise;
+              } else {
+                return true;
+              }
             };
           };
 
@@ -112,12 +120,11 @@ var valdrFormItemDirectiveDefinitionFactory = function (restrict) {
           var asyncValidate = createValidator(true);
 
           ngModelController.$validators.valdr = validate;
-          if(valdrEnabled.isEnabled() && asyncValidate !== null){
-            ngModelController.$asyncValidators.valdr = asyncValidate;
-          }
+          ngModelController.$asyncValidators.valdr = asyncValidate;
 
           scope.$on(valdrEvents.revalidate, function () {
             validate(ngModelController.$modelValue);
+            asyncValidate(ngModelController.$modelValue);
           });
 
           scope.$on('$destroy', function () {
