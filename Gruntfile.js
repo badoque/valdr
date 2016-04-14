@@ -157,7 +157,7 @@ module.exports = function (grunt) {
     }
   });
 
-  grunt.registerTask('test', ['jshint:all', 'karma:unit']);
+  grunt.registerTask('test', [/*'jshint:all', */'karma:unit']);
   grunt.registerTask('default', ['test']);
 
   // Advanced test tasks

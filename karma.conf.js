@@ -40,14 +40,14 @@ module.exports = function (config) {
 
     singleRun: false,
 
-    preprocessors: {
-      'src/**/!(*.spec)+(.js)': ['coverage']
-    },
+    // preprocessors: {
+    //   'src/**/!(*.spec)+(.js)': ['coverage']
+    // },
 
-    coverageReporter: {
-      type: 'lcov',
-      dir: 'coverage/'
-    },
+    // coverageReporter: {
+    //   type: 'lcov',
+    //   dir: 'coverage/'
+    // },
 
     plugins: [
       'karma-jasmine',

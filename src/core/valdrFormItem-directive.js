@@ -98,14 +98,23 @@ var valdrFormItemDirectiveDefinitionFactory = function (restrict) {
             }
           };
 
-          var validate = function(modelValue){
-            var getOtherModelValuesOnForm = extractModelValuesFromFormController(FormController);
-            var validationResult = valdr.validate(valdrTypeController.getType(), fieldName, modelValue, getOtherModelValuesOnForm);
-            updateNgModelController(validationResult);
-            return valdrEnabled.isEnabled() ? validationResult.valid : true;
+
+          var createValidator = function(async){
+            return function(modelValue){
+              var getOtherModelValuesOnForm = extractModelValuesFromFormController(FormController);
+              var validationResult = valdr.validate(valdrTypeController.getType(), fieldName, modelValue, getOtherModelValuesOnForm, async);
+              updateNgModelController(validationResult);
+              return valdrEnabled.isEnabled() ? validationResult.valid : true;
+            };
           };
 
+          var validate = createValidator(false);
+          var asyncValidate = createValidator(true);
+
           ngModelController.$validators.valdr = validate;
+          if(valdrEnabled.isEnabled() && asyncValidate !== null){
+            ngModelController.$asyncValidators.valdr = asyncValidate;
+          }
 
           scope.$on(valdrEvents.revalidate, function () {
             validate(ngModelController.$modelValue);

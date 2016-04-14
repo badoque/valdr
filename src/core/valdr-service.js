@@ -75,8 +75,8 @@ angular.module('valdr')
     };
 
     this.$get =
-      ['$log', '$injector', '$rootScope', '$http', '$timeout', 'valdrEvents', 'valdrUtil', 'valdrClasses',
-        function ($log, $injector, $rootScope, $http, $timeout, valdrEvents, valdrUtil, valdrClasses) {
+      ['$log', '$injector', '$rootScope', '$http', '$timeout', 'valdrEvents', 'valdrUtil', 'valdrClasses', '$q',
+        function ($log, $injector, $rootScope, $http, $timeout, valdrEvents, valdrUtil, valdrClasses, $q) {
 
           // inject all validators
           angular.forEach(validatorNames, function (validatorName) {
@@ -121,8 +121,7 @@ angular.module('valdr')
              * @param value the value to validate
              * @returns {*}
              */
-            validate: function (typeName, fieldName, value, getOtherModelsDataOnForm) {
-
+            validate: function (typeName, fieldName, value, getOtherModelsDataOnForm, async) {
               var validResult = { valid: true },
                 typeConstraints = constraintsForType(typeName);
 
@@ -130,10 +129,30 @@ angular.module('valdr')
                 var fieldConstraints = typeConstraints[fieldName],
                   fieldIsValid = true,
                   validationResults = [],
-                  violations = [];
+                  violations = [],
+                  deferred;
+
+                var hasAsyncValidators = false;
+                var validatorsToRun = 0;
+                var validatorsRan = 0;
+                for (var k in fieldConstraints) {
+                  if (fieldConstraints.hasOwnProperty(k) && fieldConstraints[k].async){
+                    validatorsToRun++;
+                  }
+                }
+
+                if(async){
+                  deferred = $q.defer();
+                }
 
                 angular.forEach(fieldConstraints, function (constraint, validatorName) {
+                  
                   var validator = validators[validatorName];
+                  var validationResult;
+
+                  if(validator !== undefined && validator.async){
+                    hasAsyncValidators = true;
+                  }
 
                   if (angular.isUndefined(validator)) {
                     $log.warn('No validator defined for \'' + validatorName +
@@ -183,35 +202,99 @@ angular.module('valdr')
                     });
                   };
 
-                  var valid;
-                  if(constraint.hasOwnProperty('requireModels')){
-                    valid = validator.validate(value, constraint, getRequiredModelsValues(constraint));
-                    propagateDependentFieldsValidation(fieldName, typeName);
-                  } else {
-                    valid = validator.validate(value, constraint);
-                    propagateDependentFieldsValidation(fieldName, typeName);
-                  } 
-                  var validationResult = {
-                    valid: valid,
-                    value: value,
-                    field: fieldName,
-                    type: typeName,
-                    validator: validatorName
-                  };
-                  angular.extend(validationResult, constraint);
+                  if(!async && (validator.async === false || validator.async === undefined) || async && validator.async){
 
-                  validationResults.push(validationResult);
-                  if (!valid) {
-                    violations.push(validationResult);
+                    var valid;
+                    if(constraint.hasOwnProperty('requireModels')){
+                      valid = validator.validate(value, constraint, getRequiredModelsValues(constraint));
+                    } else {
+                      valid = validator.validate(value, constraint);
+                    } 
+                    validatorsRan++;
+                    
+                    if(!async){
+                      validationResult = {
+                        valid: valid,
+                        value: value,
+                        field: fieldName,
+                        type: typeName,
+                        validator: validatorName
+                      };
+                      angular.extend(validationResult, constraint);
+                      validationResults.push(validationResult);
+                      if (!valid) {
+                        violations.push(validationResult);
+                      }
+                      fieldIsValid = fieldIsValid && valid;
+                      if(validatorsToRun === validatorsRan || !fieldIsValid){
+                        propagateDependentFieldsValidation(fieldName, typeName);
+                      }
+                    } else {
+                      validationResult = {
+                        valid: undefined,
+                        value: value,
+                        field: fieldName,
+                        type: typeName,
+                        validator: validatorName
+                      };
+                      validationResults.push(validationResult);
+                      angular.extend(validationResult, constraint);
+                      valid.then(function(){
+                        validationResult.valid = true;
+                      }).catch(function(){
+                        validationResult.valid = true;
+                        violations.push(validationResult);
+                      }).finally(function(){
+                        fieldIsValid = undefined;
+                        var finishedRunning = true;
+                        angular.forEach(validationResults, function(vr){
+                          if (vr.valid !== undefined && fieldIsValid === undefined && vr.valid === true){
+                            fieldIsValid = true;
+                          } else if(vr.valid !== undefined && vr.valid === false){
+                            fieldIsValid = false;
+                            return false;
+                          } else if(vr.valid === undefined){
+                            finishedRunning = false;
+                          }
+                        });
+
+                        if(fieldIsValid !== undefined && validatorsToRun === validatorsRan && finishedRunning){
+                          if(!fieldIsValid){
+                            propagateDependentFieldsValidation(fieldName, typeName);
+                            deferred.reject();
+                          } else {
+                            propagateDependentFieldsValidation(fieldName, typeName);
+                            deferred.resolve();
+                          }
+                        }
+                      });
+                    }
                   }
-                  fieldIsValid = fieldIsValid && valid;
                 });
+                if(!async){
+                  debugger;
+                  return {
+                    valid: fieldIsValid,
+                    violations: violations.length === 0 ? undefined : violations,
+                    validationResults: validationResults.length === 0 ? undefined : validationResults
+                  };
+                } else {
+                  if(hasAsyncValidators){
+                    return {
+                      valid: deferred.promise,
+                      violations: violations,
+                      validationResults: validationResults
+                    };
+                  } else {
+                    deferred.resolve();
+                    return {
+                      valid: deferred.promise,
+                      violations: [],
+                      validationResults: []
+                    };
+                  }
 
-                return {
-                  valid: fieldIsValid,
-                  violations: violations.length === 0 ? undefined : violations,
-                  validationResults: validationResults.length === 0 ? undefined : validationResults
-                };
+                }
               } else {
                 return validResult;
               }
